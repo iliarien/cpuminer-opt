@@ -2992,6 +2992,7 @@ static void show_credits()
    printf("cpuminer-opt/baz "PACKAGE_VERSION" \n");
    printf("icemining.ca fork - the cool pool\n");
    printf("(https://github.com/iceminingdotca)\n");
+   printf("\n* 07102018 speedup - barrystyle\n");
    printf("\033[0m");
    printf("\n");
 }

@@ -52,7 +52,7 @@ int scanhash_argon2d_crds( int thr_id, struct work *work, uint32_t max_nonce,
         do {
                 be32enc(&endiandata[19], nonce);
                 argon2d_crds_hash( hash, endiandata );
-                if ( hash[7] <= Htarg && fulltest( hash, ptarget ) )
+                if ( hash[7] < Htarg )
                 {
                         pdata[19] = nonce;
                         *hashes_done = pdata[19] - first_nonce;
@@ -60,7 +60,7 @@ int scanhash_argon2d_crds( int thr_id, struct work *work, uint32_t max_nonce,
                         return 1;
                 }
                 nonce++;
-        } while (nonce < max_nonce && !work_restart[thr_id].restart);
+        } while (nonce < max_nonce);
 
         pdata[19] = nonce;
         *hashes_done = pdata[19] - first_nonce + 1;
@@ -205,52 +205,43 @@ void Argon2Deinit() {
     }
 }
 
-void argon2ad_urx_hash( void *output, const void *input )
-{
-    int64_t nTime       = (int)time(NULL);
-    EnsureArgon2MemoryAllocated (nTime);
-    argon2_context ctx;
-    ctx.version         = ARGON2_VERSION_13;
-    ctx.flags           = ARGON2_DEFAULT_FLAGS;
-    ctx.out             = (uint8_t*) output;
-    ctx.outlen          = OUTPUT_BYTES;
-    ctx.pwd             = (uint8_t*)input;
-    ctx.pwdlen          = INPUT_BYTES - 40;
-    ctx.salt            = ((uint8_t*) input) + 40;
-    ctx.saltlen         = 40;
-    ctx.secret          = (uint8_t*) POW_SECRET;
-    ctx.secretlen       = strlen (POW_SECRET);
-    ctx.ad              = pArgon2Ad;
-    ctx.adlen           = GetArgon2AdSize (nTime);
-    ctx.m_cost          = 512;
-    ctx.t_cost          = 1;
-    ctx.lanes           = 2;
-    ctx.threads         = 1;
-    ctx.allocate_cbk    = nullptr;
-    ctx.free_cbk        = nullptr;
-    argon2_ctx (&ctx, Argon2_d);
-}
-
-int scanhash_argon2ad_urx( int thr_id, struct work *work, uint32_t max_nonce,
-                      uint64_t *hashes_done )
+int scanhash_argon2ad_urx( int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done )
 {
         uint32_t _ALIGN(64) endiandata[20];
         uint32_t _ALIGN(64) hash[8];
         uint32_t *pdata = work->data;
         uint32_t *ptarget = work->target;
-
         const uint32_t first_nonce = pdata[19];
         const uint32_t Htarg = ptarget[7];
-
         uint32_t nonce = first_nonce;
-
         swab32_array( endiandata, pdata, 20 );
+        int64_t nTime       = (int)time(NULL);
+        EnsureArgon2MemoryAllocated (nTime);
 
         do {
                 be32enc(&endiandata[19], nonce);
-                argon2ad_urx_hash( hash, endiandata );
-                if ( hash[7] <= Htarg && fulltest( hash, ptarget ) )
-                {
+		int64_t nTime       = (int)time(NULL);
+		argon2_context ctx;
+		ctx.version         = ARGON2_VERSION_13;
+		ctx.flags           = ARGON2_DEFAULT_FLAGS;
+		ctx.out             = (uint8_t*) hash;
+		ctx.outlen          = OUTPUT_BYTES;
+		ctx.pwd             = (uint8_t*)endiandata;
+		ctx.pwdlen          = INPUT_BYTES - 40;
+		ctx.salt            = ((uint8_t*)endiandata) + 40;
+		ctx.saltlen         = 40;
+		ctx.secret          = (uint8_t*) POW_SECRET;
+		ctx.secretlen       = strlen (POW_SECRET);
+		ctx.ad              = pArgon2Ad;
+		ctx.adlen           = GetArgon2AdSize (nTime);
+		ctx.m_cost          = 512;
+		ctx.t_cost          = 1;
+		ctx.lanes           = 2;
+		ctx.threads         = 1;
+		ctx.allocate_cbk    = nullptr;
+		ctx.free_cbk        = nullptr;
+		argon2_ctx (&ctx, Argon2_d);
+                if ( hash[7] < Htarg ) {
                         pdata[19] = nonce;
                         *hashes_done = pdata[19] - first_nonce;
                         work_set_target_ratio(work, hash);
@@ -267,7 +258,6 @@ int scanhash_argon2ad_urx( int thr_id, struct work *work, uint32_t max_nonce,
 bool register_argon2ad_urx_algo( algo_gate_t* gate )
 {
         gate->scanhash = (void*)&scanhash_argon2ad_urx;
-        gate->hash = (void*)&argon2ad_urx_hash;
         gate->set_target = (void*)&scrypt_set_target;
         gate->optimizations = SSE2_OPT | AVX2_OPT | AVX512_OPT;
         return true;

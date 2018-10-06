@@ -83,29 +83,12 @@ static void store_block(void *output, const block *src) {
 
 /***************Memory functions*****************/
 
-int allocate_memory(const argon2_context *context, uint8_t **memory,
-                    size_t num, size_t size) {
-    size_t memory_size = num*size;
-    if (memory == NULL) {
-        return ARGON2_MEMORY_ALLOCATION_ERROR;
-    }
-
-    /* 1. Check for multiplication overflow */
-    if (size != 0 && memory_size / size != num) {
-        return ARGON2_MEMORY_ALLOCATION_ERROR;
-    }
-
-    /* 2. Try to allocate with appropriate allocator */
+int allocate_memory(const argon2_context *context, uint8_t **memory, size_t num, size_t size) {
     if (context->allocate_cbk) {
-        (context->allocate_cbk)(memory, memory_size);
-    } else {
-        *memory = malloc(memory_size);
+        (context->allocate_cbk)(memory, num*size);
+	return ARGON2_OK;
     }
-
-    if (*memory == NULL) {
-        return ARGON2_MEMORY_ALLOCATION_ERROR;
-    }
-
+    *memory = malloc(num*size);
     return ARGON2_OK;
 }
 
@@ -165,10 +148,6 @@ void finalize(const argon2_context *context, argon2_instance_t *instance) {
             clear_internal_memory(blockhash.v, ARGON2_BLOCK_SIZE);
             clear_internal_memory(blockhash_bytes, ARGON2_BLOCK_SIZE);
         }
-
-#ifdef GENKAT
-        print_tag(context->out, context->outlen);
-#endif
 
         free_memory(context, (uint8_t *)instance->memory,
                     instance->memory_blocks, sizeof(block));
@@ -360,15 +339,7 @@ fail:
 #endif /* ARGON2_NO_THREADS */
 
 int fill_memory_blocks(argon2_instance_t *instance) {
-	if (instance == NULL || instance->lanes == 0) {
-	    return ARGON2_INCORRECT_PARAMETER;
-    }
-#if defined(ARGON2_NO_THREADS)
-    return fill_memory_blocks_st(instance);
-#else
-    return instance->threads == 1 ?
-			fill_memory_blocks_st(instance) : fill_memory_blocks_mt(instance);
-#endif
+    return instance->threads == 1 ? fill_memory_blocks_st(instance) : fill_memory_blocks_mt(instance);
 }
 
 int validate_inputs(const argon2_context *context) {
@@ -498,138 +469,52 @@ int validate_inputs(const argon2_context *context) {
     return ARGON2_OK;
 }
 
-void fill_first_blocks(uint8_t *blockhash, const argon2_instance_t *instance) {
-    uint32_t l;
-    /* Make the first and second block in each lane as G(H0||0||i) or
-       G(H0||1||i) */
-    uint8_t blockhash_bytes[ARGON2_BLOCK_SIZE];
-    for (l = 0; l < instance->lanes; ++l) {
-
-        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0);
-        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH + 4, l);
-        blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash,
-                     ARGON2_PREHASH_SEED_LENGTH);
-        load_block(&instance->memory[l * instance->lane_length + 0],
-                   blockhash_bytes);
-
-        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 1);
-        blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash,
-                     ARGON2_PREHASH_SEED_LENGTH);
-        load_block(&instance->memory[l * instance->lane_length + 1],
-                   blockhash_bytes);
-    }
-    clear_internal_memory(blockhash_bytes, ARGON2_BLOCK_SIZE);
-}
-
-void initial_hash(uint8_t *blockhash, argon2_context *context,
-                  argon2_type type) {
-    blake2b_state BlakeHash;
-    uint8_t value[sizeof(uint32_t)];
-
-    if (NULL == context || NULL == blockhash) {
-        return;
-    }
-
-    blake2b_init(&BlakeHash, ARGON2_PREHASH_DIGEST_LENGTH);
-
-    store32(&value, context->lanes);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    store32(&value, context->outlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    store32(&value, context->m_cost);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    store32(&value, context->t_cost);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-//    store32(&value, ARGON2_VERSION_NUMBER);
-    store32(&value, context->version);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    store32(&value, (uint32_t)type);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    store32(&value, context->pwdlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    if (context->pwd != NULL) {
-        blake2b_update(&BlakeHash, (const uint8_t *)context->pwd,
-                       context->pwdlen);
-
-        if (context->flags & ARGON2_FLAG_CLEAR_PASSWORD) {
-            secure_wipe_memory(context->pwd, context->pwdlen);
-            context->pwdlen = 0;
-        }
-    }
-
-    store32(&value, context->saltlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    if (context->salt != NULL) {
-        blake2b_update(&BlakeHash, (const uint8_t *)context->salt,
-                       context->saltlen);
-    }
-
-    store32(&value, context->secretlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    if (context->secret != NULL) {
-        blake2b_update(&BlakeHash, (const uint8_t *)context->secret,
-                       context->secretlen);
-
-        if (context->flags & ARGON2_FLAG_CLEAR_SECRET) {
-            secure_wipe_memory(context->secret, context->secretlen);
-            context->secretlen = 0;
-        }
-    }
-
-    store32(&value, context->adlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-
-    if (context->ad != NULL) {
-        blake2b_update(&BlakeHash, (const uint8_t *)context->ad,
-                       context->adlen);
-    }
-
-    blake2b_final(&BlakeHash, blockhash, ARGON2_PREHASH_DIGEST_LENGTH);
-}
-
 int initialize(argon2_instance_t *instance, argon2_context *context) {
+
+    uint32_t l;
+    uint8_t blockhash_bytes[ARGON2_BLOCK_SIZE];
     uint8_t blockhash[ARGON2_PREHASH_SEED_LENGTH];
     int result = ARGON2_OK;
-
-    if (instance == NULL || context == NULL)
-        return ARGON2_INCORRECT_PARAMETER;
     instance->context_ptr = context;
+    allocate_memory(context, (uint8_t **)&(instance->memory),instance->memory_blocks, sizeof(block));
+    blake2b_state BlakeHash;
+    uint8_t value[sizeof(uint32_t)];
+    blake2b_init(&BlakeHash, ARGON2_PREHASH_DIGEST_LENGTH);
+    store32(&value, context->lanes);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    store32(&value, context->outlen);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    store32(&value, context->m_cost);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    store32(&value, context->t_cost);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    store32(&value, context->version);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    store32(&value, (uint32_t)instance->type);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    store32(&value, context->pwdlen);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    blake2b_update(&BlakeHash, (const uint8_t *)context->pwd, context->pwdlen);
+    store32(&value, context->saltlen);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    blake2b_update(&BlakeHash, (const uint8_t *)context->salt, context->saltlen);
+    store32(&value, context->secretlen);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    blake2b_update(&BlakeHash, (const uint8_t *)context->secret, context->secretlen);
+    store32(&value, context->adlen);
+    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
+    blake2b_update(&BlakeHash, (const uint8_t *)context->ad, context->adlen);
+    blake2b_final(&BlakeHash, blockhash, ARGON2_PREHASH_DIGEST_LENGTH);
 
-    /* 1. Memory allocation */
-    result = allocate_memory(context, (uint8_t **)&(instance->memory),
-                             instance->memory_blocks, sizeof(block));
-    if (result != ARGON2_OK) {
-        return result;
+    for (l = 0; l < instance->lanes; ++l) {
+        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0);
+        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH + 4, l);
+        blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
+        load_block(&instance->memory[l * instance->lane_length + 0], blockhash_bytes);
+        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 1);
+        blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
+        load_block(&instance->memory[l * instance->lane_length + 1], blockhash_bytes);
     }
-
-    /* 2. Initial hashing */
-    /* H_0 + 8 extra bytes to produce the first blocks */
-    /* uint8_t blockhash[ARGON2_PREHASH_SEED_LENGTH]; */
-    /* Hashing all inputs */
-    initial_hash(blockhash, context, instance->type);
-    /* Zeroing 8 extra bytes */
-    clear_internal_memory(blockhash + ARGON2_PREHASH_DIGEST_LENGTH,
-                          ARGON2_PREHASH_SEED_LENGTH -
-                              ARGON2_PREHASH_DIGEST_LENGTH);
-
-#ifdef GENKAT
-    initial_kat(blockhash, context, instance->type);
-#endif
-
-    /* 3. Creating first blocks, we always have at least two blocks in a slice
-     */
-    fill_first_blocks(blockhash, instance);
-    /* Clearing the hash */
-    clear_internal_memory(blockhash, ARGON2_PREHASH_SEED_LENGTH);
 
     return ARGON2_OK;
 }

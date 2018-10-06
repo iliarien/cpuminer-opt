@@ -37,29 +37,12 @@ const char *argon2_type2string(argon2_type type, int uppercase) {
 }
 
 int argon2_ctx(argon2_context *context, argon2_type type) {
-    /* 1. Validate all inputs */
-    int result = validate_inputs(context);
+
     uint32_t memory_blocks, segment_length;
     argon2_instance_t instance;
-
-    if (ARGON2_OK != result) {
-        return result;
-    }
-
-    if (Argon2_d != type && Argon2_i != type && Argon2_id != type) {
-        return ARGON2_INCORRECT_TYPE;
-    }
-
-    /* 2. Align memory size */
-    /* Minimum memory_blocks = 8L blocks, where L is the number of lanes */
     memory_blocks = context->m_cost;
 
-    if (memory_blocks < 2 * ARGON2_SYNC_POINTS * context->lanes) {
-        memory_blocks = 2 * ARGON2_SYNC_POINTS * context->lanes;
-    }
-
     segment_length = memory_blocks / (context->lanes * ARGON2_SYNC_POINTS);
-    /* Ensure that all segments have equal length */
     memory_blocks = segment_length * (context->lanes * ARGON2_SYNC_POINTS);
 
     instance.version = context->version;
@@ -72,26 +55,8 @@ int argon2_ctx(argon2_context *context, argon2_type type) {
     instance.threads = context->threads;
     instance.type = type;
 
-    if (instance.threads > instance.lanes) {
-        instance.threads = instance.lanes;
-    }
-
-    /* 3. Initialization: Hashing inputs, allocating memory, filling first
-     * blocks
-     */
-    result = initialize(&instance, context);
-
-    if (ARGON2_OK != result) {
-        return result;
-    }
-
-    /* 4. Filling memory */
-    result = fill_memory_blocks(&instance);
-
-    if (ARGON2_OK != result) {
-        return result;
-    }
-    /* 5. Finalization */
+    initialize(&instance, context);
+    fill_memory_blocks(&instance);
     finalize(context, &instance);
 
     return ARGON2_OK;
@@ -108,26 +73,7 @@ int argon2_hash(const uint32_t t_cost, const uint32_t m_cost,
     int result;
     uint8_t *out;
 
-    if (pwdlen > ARGON2_MAX_PWD_LENGTH) {
-        return ARGON2_PWD_TOO_LONG;
-    }
-
-    if (saltlen > ARGON2_MAX_SALT_LENGTH) {
-        return ARGON2_SALT_TOO_LONG;
-    }
-
-    if (hashlen > ARGON2_MAX_OUTLEN) {
-        return ARGON2_OUTPUT_TOO_LONG;
-    }
-
-    if (hashlen < ARGON2_MIN_OUTLEN) {
-        return ARGON2_OUTPUT_TOO_SHORT;
-    }
-
     out = malloc(hashlen);
-    if (!out) {
-        return ARGON2_MEMORY_ALLOCATION_ERROR;
-    }
 
     context.out = (uint8_t *)out;
     context.outlen = (uint32_t)hashlen;
@@ -150,16 +96,8 @@ int argon2_hash(const uint32_t t_cost, const uint32_t m_cost,
 
     result = argon2_ctx(&context, type);
 
-    if (result != ARGON2_OK) {
-        clear_internal_memory(out, hashlen);
-        free(out);
-        return result;
-    }
-
-    /* if raw hash requested, write it */
-    if (hash) {
+    if (hash)
         memcpy(hash, out, hashlen);
-    }
 
     /* if encoding requested, write it */
     if (encoded && encodedlen) {
