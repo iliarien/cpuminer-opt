@@ -343,129 +343,6 @@ int fill_memory_blocks(argon2_instance_t *instance) {
 }
 
 int validate_inputs(const argon2_context *context) {
-    if (NULL == context) {
-        return ARGON2_INCORRECT_PARAMETER;
-    }
-
-    if (NULL == context->out) {
-        return ARGON2_OUTPUT_PTR_NULL;
-    }
-
-    /* Validate output length */
-    if (ARGON2_MIN_OUTLEN > context->outlen) {
-        return ARGON2_OUTPUT_TOO_SHORT;
-    }
-
-    if (ARGON2_MAX_OUTLEN < context->outlen) {
-        return ARGON2_OUTPUT_TOO_LONG;
-    }
-
-    /* Validate password (required param) */
-    if (NULL == context->pwd) {
-        if (0 != context->pwdlen) {
-            return ARGON2_PWD_PTR_MISMATCH;
-        }
-    }
-
-    if (ARGON2_MIN_PWD_LENGTH > context->pwdlen) {
-      return ARGON2_PWD_TOO_SHORT;
-    }
-
-    if (ARGON2_MAX_PWD_LENGTH < context->pwdlen) {
-        return ARGON2_PWD_TOO_LONG;
-    }
-
-    /* Validate salt (required param) */
-    if (NULL == context->salt) {
-        if (0 != context->saltlen) {
-            return ARGON2_SALT_PTR_MISMATCH;
-        }
-    }
-
-    if (ARGON2_MIN_SALT_LENGTH > context->saltlen) {
-        return ARGON2_SALT_TOO_SHORT;
-    }
-
-    if (ARGON2_MAX_SALT_LENGTH < context->saltlen) {
-        return ARGON2_SALT_TOO_LONG;
-    }
-
-    /* Validate secret (optional param) */
-    if (NULL == context->secret) {
-        if (0 != context->secretlen) {
-            return ARGON2_SECRET_PTR_MISMATCH;
-        }
-    } else {
-        if (ARGON2_MIN_SECRET > context->secretlen) {
-            return ARGON2_SECRET_TOO_SHORT;
-        }
-        if (ARGON2_MAX_SECRET < context->secretlen) {
-            return ARGON2_SECRET_TOO_LONG;
-        }
-    }
-
-    /* Validate associated data (optional param) */
-    if (NULL == context->ad) {
-        if (0 != context->adlen) {
-            return ARGON2_AD_PTR_MISMATCH;
-        }
-    } else {
-        if (ARGON2_MIN_AD_LENGTH > context->adlen) {
-            return ARGON2_AD_TOO_SHORT;
-        }
-        if (ARGON2_MAX_AD_LENGTH < context->adlen) {
-            return ARGON2_AD_TOO_LONG;
-        }
-    }
-
-    /* Validate memory cost */
-    if (ARGON2_MIN_MEMORY > context->m_cost) {
-        return ARGON2_MEMORY_TOO_LITTLE;
-    }
-
-    if (ARGON2_MAX_MEMORY < context->m_cost) {
-        return ARGON2_MEMORY_TOO_MUCH;
-    }
-
-    if (context->m_cost < 8 * context->lanes) {
-        return ARGON2_MEMORY_TOO_LITTLE;
-    }
-
-    /* Validate time cost */
-    if (ARGON2_MIN_TIME > context->t_cost) {
-        return ARGON2_TIME_TOO_SMALL;
-    }
-
-    if (ARGON2_MAX_TIME < context->t_cost) {
-        return ARGON2_TIME_TOO_LARGE;
-    }
-
-    /* Validate lanes */
-    if (ARGON2_MIN_LANES > context->lanes) {
-        return ARGON2_LANES_TOO_FEW;
-    }
-
-    if (ARGON2_MAX_LANES < context->lanes) {
-        return ARGON2_LANES_TOO_MANY;
-    }
-
-    /* Validate threads */
-    if (ARGON2_MIN_THREADS > context->threads) {
-        return ARGON2_THREADS_TOO_FEW;
-    }
-
-    if (ARGON2_MAX_THREADS < context->threads) {
-        return ARGON2_THREADS_TOO_MANY;
-    }
-
-    if (NULL != context->allocate_cbk && NULL == context->free_cbk) {
-        return ARGON2_FREE_MEMORY_CBK_NULL;
-    }
-
-    if (NULL == context->allocate_cbk && NULL != context->free_cbk) {
-        return ARGON2_ALLOCATE_MEMORY_CBK_NULL;
-    }
-
     return ARGON2_OK;
 }
 
@@ -493,19 +370,27 @@ int initialize(argon2_instance_t *instance, argon2_context *context) {
     store32(&value, (uint32_t)instance->type);
     blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
     store32(&value, context->pwdlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-    blake2b_update(&BlakeHash, (const uint8_t *)context->pwd, context->pwdlen);
+
+    // combine every two _update rounds
+    uint8_t contextcombine[68];
+    memcpy(contextcombine,(const uint8_t *)&value,4);
+    memcpy(contextcombine+4,(const uint8_t *)context->pwd,40);
+    blake2b_update(&BlakeHash, (const uint8_t *)contextcombine, 44);
     store32(&value, context->saltlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-    blake2b_update(&BlakeHash, (const uint8_t *)context->salt, context->saltlen);
+    memcpy(contextcombine,(const uint8_t *)&value,4);
+    memcpy(contextcombine+4,(const uint8_t *)context->salt,40);
+    blake2b_update(&BlakeHash, (const uint8_t *)contextcombine, 44);
     store32(&value, context->secretlen);
-    blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
-    blake2b_update(&BlakeHash, (const uint8_t *)context->secret, context->secretlen);
+    memcpy(contextcombine,(const uint8_t *)&value,4);
+    memcpy(contextcombine+4,(const uint8_t *)context->secret,64);
+    blake2b_update(&BlakeHash, (const uint8_t *)contextcombine, 68);
+
+    // this one is slower if combined
     store32(&value, context->adlen);
     blake2b_update(&BlakeHash, (const uint8_t *)&value, sizeof(value));
     blake2b_update(&BlakeHash, (const uint8_t *)context->ad, context->adlen);
-    blake2b_final(&BlakeHash, blockhash, ARGON2_PREHASH_DIGEST_LENGTH);
 
+    blake2b_final(&BlakeHash, blockhash, ARGON2_PREHASH_DIGEST_LENGTH);
     store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0);
     store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH + 4, 0);
     blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
@@ -513,7 +398,6 @@ int initialize(argon2_instance_t *instance, argon2_context *context) {
     store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 1);
     blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
     load_block(&instance->memory[0 * instance->lane_length + 1], blockhash_bytes);
-		
     store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0);
     store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH + 4, 1);
     blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);

@@ -2988,15 +2988,21 @@ static int thread_create(struct thr_info *thr, void* func)
 static void show_credits()
 {
    printf("\n");
+   FILE *fptr; 
+   fptr = fopen("newice.ansi", "r"); 
+   char c = fgetc(fptr); 
+   while (c != EOF) {
+     printf ("%c", c); 
+     c = fgetc(fptr); 
+   } 
+   fclose(fptr);
    printf("\x1b[01;37m");
-   printf("cpuminer-opt/baz "PACKAGE_VERSION" \n");
+   printf("\ncpuminer-opt/baz "PACKAGE_VERSION" \n");
    printf("icemining.ca fork - the cool pool\n");
    printf("(https://github.com/iceminingdotca)\n");
-   printf("\n* 07102018 speedup - barrystyle\n");
    printf("\033[0m");
    printf("\n");
 }
-
 
 bool check_cpu_capability ()
 {
