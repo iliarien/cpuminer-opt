@@ -506,15 +506,21 @@ int initialize(argon2_instance_t *instance, argon2_context *context) {
     blake2b_update(&BlakeHash, (const uint8_t *)context->ad, context->adlen);
     blake2b_final(&BlakeHash, blockhash, ARGON2_PREHASH_DIGEST_LENGTH);
 
-    for (l = 0; l < instance->lanes; ++l) {
-        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0);
-        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH + 4, l);
-        blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
-        load_block(&instance->memory[l * instance->lane_length + 0], blockhash_bytes);
-        store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 1);
-        blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
-        load_block(&instance->memory[l * instance->lane_length + 1], blockhash_bytes);
-    }
+    store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0);
+    store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH + 4, 0);
+    blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
+    load_block(&instance->memory[0 * instance->lane_length + 0], blockhash_bytes);
+    store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 1);
+    blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
+    load_block(&instance->memory[0 * instance->lane_length + 1], blockhash_bytes);
+		
+    store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 0);
+    store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH + 4, 1);
+    blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
+    load_block(&instance->memory[1 * instance->lane_length + 0], blockhash_bytes);
+    store32(blockhash + ARGON2_PREHASH_DIGEST_LENGTH, 1);
+    blake2b_long(blockhash_bytes, ARGON2_BLOCK_SIZE, blockhash, ARGON2_PREHASH_SEED_LENGTH);
+    load_block(&instance->memory[1 * instance->lane_length + 1], blockhash_bytes);
 
     return ARGON2_OK;
 }
