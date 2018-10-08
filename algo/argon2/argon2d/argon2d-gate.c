@@ -3,6 +3,22 @@
 #include <time.h>
 #include <assert.h>
 
+static struct timeval tm1;
+
+static inline void start()
+{
+    gettimeofday(&tm1, NULL);
+}
+
+static inline void stop()
+{
+    struct timeval tm2;
+    gettimeofday(&tm2, NULL);
+
+    unsigned long long t = 1000 * (tm2.tv_sec - tm1.tv_sec) + (tm2.tv_usec - tm1.tv_usec) / 1000;
+    printf("%llu ms\n", t);
+}
+
 static const size_t INPUT_BYTES = 80;  // Lenth of a block header in bytes. Input Length = Salt Length (salt = input)
 static const size_t OUTPUT_BYTES = 32; // Length of output needed for a 256-bit hash
 static const unsigned int DEFAULT_ARGON2_FLAG = 2; //Same as ARGON2_DEFAULT_FLAGS
@@ -218,6 +234,8 @@ int scanhash_argon2ad_urx( int thr_id, struct work *work, uint32_t max_nonce, ui
         int64_t nTime       = (int)time(NULL);
         EnsureArgon2MemoryAllocated (nTime);
 
+	start();
+
         do {
                 be32enc(&endiandata[19], nonce);
 		int64_t nTime       = (int)time(NULL);
@@ -248,6 +266,7 @@ int scanhash_argon2ad_urx( int thr_id, struct work *work, uint32_t max_nonce, ui
                         return 1;
                 }
                 nonce++;
+		//if (nonce % 5000 == 0) { stop(); start(); }
         } while (nonce < max_nonce && !work_restart[thr_id].restart);
 
         pdata[19] = nonce;
