@@ -3,22 +3,6 @@
 #include <time.h>
 #include <assert.h>
 
-static struct timeval tm1;
-
-static inline void start()
-{
-    gettimeofday(&tm1, NULL);
-}
-
-static inline void stop()
-{
-    struct timeval tm2;
-    gettimeofday(&tm2, NULL);
-
-    unsigned long long t = 1000 * (tm2.tv_sec - tm1.tv_sec) + (tm2.tv_usec - tm1.tv_usec) / 1000;
-    printf("%llu ms\n", t);
-}
-
 static const size_t INPUT_BYTES = 80;  // Lenth of a block header in bytes. Input Length = Salt Length (salt = input)
 static const size_t OUTPUT_BYTES = 32; // Length of output needed for a 256-bit hash
 static const unsigned int DEFAULT_ARGON2_FLAG = 2; //Same as ARGON2_DEFAULT_FLAGS
@@ -233,31 +217,29 @@ int scanhash_argon2ad_urx( int thr_id, struct work *work, uint32_t max_nonce, ui
         swab32_array( endiandata, pdata, 20 );
         int64_t nTime       = (int)time(NULL);
         EnsureArgon2MemoryAllocated (nTime);
-
-	start();
+      
+	argon2_context ctx;
+	ctx.version         = ARGON2_VERSION_13;
+	ctx.flags           = ARGON2_DEFAULT_FLAGS;
+	ctx.out             = (uint8_t*) hash;
+	ctx.outlen          = OUTPUT_BYTES;
+	ctx.pwd             = (uint8_t*)endiandata;
+	ctx.pwdlen          = INPUT_BYTES - 40;
+	ctx.salt            = ((uint8_t*)endiandata) + 40;
+	ctx.saltlen         = 40;
+	ctx.secret          = (uint8_t*) POW_SECRET;
+	ctx.secretlen       = strlen (POW_SECRET);
+	ctx.ad              = pArgon2Ad;
+	ctx.adlen           = GetArgon2AdSize (nTime);
+	ctx.m_cost          = 512;
+	ctx.t_cost          = 1;
+	ctx.lanes           = 2;
+	ctx.threads         = 1;
+	ctx.allocate_cbk    = nullptr;
+	ctx.free_cbk        = nullptr;
 
         do {
                 be32enc(&endiandata[19], nonce);
-		int64_t nTime       = (int)time(NULL);
-		argon2_context ctx;
-		ctx.version         = ARGON2_VERSION_13;
-		ctx.flags           = ARGON2_DEFAULT_FLAGS;
-		ctx.out             = (uint8_t*) hash;
-		ctx.outlen          = OUTPUT_BYTES;
-		ctx.pwd             = (uint8_t*)endiandata;
-		ctx.pwdlen          = INPUT_BYTES - 40;
-		ctx.salt            = ((uint8_t*)endiandata) + 40;
-		ctx.saltlen         = 40;
-		ctx.secret          = (uint8_t*) POW_SECRET;
-		ctx.secretlen       = strlen (POW_SECRET);
-		ctx.ad              = pArgon2Ad;
-		ctx.adlen           = GetArgon2AdSize (nTime);
-		ctx.m_cost          = 512;
-		ctx.t_cost          = 1;
-		ctx.lanes           = 2;
-		ctx.threads         = 1;
-		ctx.allocate_cbk    = nullptr;
-		ctx.free_cbk        = nullptr;
 		argon2_ctx (&ctx, Argon2_d);
                 if ( hash[7] < Htarg ) {
                         pdata[19] = nonce;
@@ -266,7 +248,6 @@ int scanhash_argon2ad_urx( int thr_id, struct work *work, uint32_t max_nonce, ui
                         return 1;
                 }
                 nonce++;
-		//if (nonce % 5000 == 0) { stop(); start(); }
         } while (nonce < max_nonce && !work_restart[thr_id].restart);
 
         pdata[19] = nonce;
