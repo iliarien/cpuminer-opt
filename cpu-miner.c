@@ -2991,8 +2991,7 @@ static void show_credits()
    printf("     A CPU miner with multi algo support and optimized for CPUs\n");
    printf("     with AES_NI and AVX2 and SHA extensions.\n");
    printf("     BTC donation address: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n"); 
-   printf("\n");
-   printf("\n");   
+  }
    printf("\ncpuminer-opt/baz" \n");
    printf(" RickillerZ For icemining.ca - the cool pool\n");
    printf("(https://github.com/iceminingdotca)\n");
