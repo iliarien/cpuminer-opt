@@ -91,7 +91,7 @@ bool allow_mininginfo = true;
 bool use_syslog = false;
 bool use_colors = true;
 static bool opt_background = false;
-bool opt_quiet = true;
+bool opt_quiet = false;
 bool opt_randomize = false;
 static int opt_retries = -1;
 static int opt_fail_pause = 10;
@@ -884,11 +884,11 @@ static int share_result( int result, struct work *work, const char *reason )
    else
    {
 #if ((defined(_WIN64) || defined(__WINDOWS__)))
-   applog( LOG_NOTICE, "%s %lu/%lu (%s%%), diff %0.8f%s, %s %sH/s",
+   applog( LOG_NOTICE, "%s %lu/%lu (%s%%), diff %0.3g%s, %s %sH/s",
                        sres, ( result ? accepted_count : rejected_count ),
                        total_submits, rate_s, sharediff, sol, hr, hr_units );
 #else
-   applog( LOG_NOTICE, "%s %lu/%lu (%s%%), diff %0.8f%s, %s %sH/s, %dC",
+   applog( LOG_NOTICE, "%s %lu/%lu (%s%%), diff %0.3g%s, %s %sH/s, %dC",
                        sres, ( result ? accepted_count : rejected_count ),
                        total_submits, rate_s, sharediff, sol, hr, hr_units,
                        (uint32_t)cpu_temp(0) );
@@ -2987,18 +2987,14 @@ static int thread_create(struct thr_info *thr, void* func)
 
 static void show_credits()
 {
-   printf("\n");
-   FILE *fptr; 
-   fptr = fopen("newice.ansi", "r"); 
-   char c = fgetc(fptr); 
-   while (c != EOF) {
-     printf ("%c", c); 
-     c = fgetc(fptr); 
-   } 
-   fclose(fptr);
-   printf("\x1b[01;37m");
-   printf("\ncpuminer-opt/baz "PACKAGE_VERSION" \n");
-   printf("icemining.ca fork - the cool pool\n");
+   printf("\n         **********  "PACKAGE_NAME" "PACKAGE_VERSION"  *********** \n");
+   printf("     A CPU miner with multi algo support and optimized for CPUs\n");
+   printf("     with AES_NI and AVX2 and SHA extensions.\n");
+   printf("     BTC donation address: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n"); 
+   printf("\n");
+   printf("\n");   
+   printf("\ncpuminer-opt/baz" \n");
+   printf(" RickillerZ For icemining.ca - the cool pool\n");
    printf("(https://github.com/iceminingdotca)\n");
    printf("\033[0m");
    printf("\n");
